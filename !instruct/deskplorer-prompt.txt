@@ -1,0 +1,252 @@
+DESKPLORER v1 – IMPLEMENTATION BRIEF (C# / WinForms / .NET 8+)
+
+GOAL
+Build a Windows desktop utility that allows grouping desktop shortcuts into interactive “folder icons” that open into small popup windows directly above their desktop position.
+
+PRIMARY CONCEPT
+Deskplorer overlays the desktop and introduces custom folder icons that behave like normal desktop icons when closed, and expand into a small window containing grouped items when opened.
+
+TECH STACK (STRICT)
+
+* Language: C#
+* UI: WinForms (NOT WPF, NOT WinUI)
+* Framework: .NET 8 or newer
+* Platform: Windows 10+ only
+* Architecture: Event-driven, minimal abstraction
+* NO MVVM (basic property binding allowed, nothing more)
+
+CORE BEHAVIOR
+
+1. CLOSED STATE
+
+* Folder appears as a normal desktop icon
+* Has:
+
+  * custom icon
+  * small badge/indicator showing item count
+* Can be:
+
+  * moved (only when edit mode enabled)
+  * locked in place
+* Interaction:
+
+  * single click OR hover (hover later) opens it
+
+2. OPEN STATE
+
+* Opens a borderless popup window directly ABOVE the icon’s position
+* Window contains:
+
+  * icons (same or scalable size vs desktop icons)
+  * items arranged:
+
+    * auto-grid OR
+    * manually positioned
+* No standard window chrome:
+
+  * no title bar buttons
+  * no system menu
+* Minimal header:
+
+  * right-aligned title (folder name)
+  * small icon-based controls only
+* Closing returns it to closed icon state
+
+3. ANIMATION (V1 = SIMPLE)
+
+* Animate open/close using bounds interpolation:
+
+  * icon → small window
+* No advanced composition required
+
+4. ITEM BEHAVIOR
+
+* Items represent:
+
+  * file paths
+  * shortcuts
+  * apps
+* Clicking launches via ShellExecute
+
+IMPORTANT DESIGN CONSTRAINTS
+
+* DO NOT attempt to replace or modify native desktop icons
+
+* Deskplorer items are an independent overlay system
+
+* Desktop interaction is additive, not destructive
+
+* Must support:
+
+  * multiple monitors
+  * different resolutions
+  * DPI awareness (basic)
+
+* Folder window ALWAYS opens relative to its icon position
+
+ARCHITECTURE
+
+Project Structure:
+
+* Program.cs
+
+* MainOverlayForm.cs
+
+* FolderWindowForm.cs
+
+* Models/
+
+  * DeskFolder.cs
+  * DeskItem.cs
+  * AppState.cs
+
+* Services/
+
+  * PersistenceService.cs
+  * DesktopInteropService.cs
+  * LaunchService.cs
+  * IconCacheService.cs
+  * AnimationService.cs
+
+* Controls/
+
+  * FolderIconControl.cs
+  * FolderContentsControl.cs
+
+* Native/
+
+  * User32.cs (P/Invoke basics)
+
+CORE COMPONENTS
+
+MainOverlayForm
+
+* Borderless, always-on-top or desktop-attached window
+* Spans all monitors OR one per monitor
+* Hosts all folder icons (closed state)
+* Handles:
+
+  * right-click menus
+  * edit mode
+  * drag/move logic
+
+FolderWindowForm
+
+* Borderless popup window
+* Opens at exact icon location
+* Displays folder contents
+* Handles:
+
+  * layout (grid/manual)
+  * launching items
+  * resizing
+
+DATA MODELS
+
+DeskFolder
+
+* Id (Guid)
+* Name
+* ClosedLocation (Point)
+* OpenSize (Size)
+* MonitorId
+* Locked (bool)
+* AutoArrange (bool)
+* ItemIconSize (int)
+* List<DeskItem>
+
+DeskItem
+
+* Id
+* DisplayName
+* FilePath
+* IconCacheKey
+* CustomPosition (optional)
+
+AppState
+
+* List<DeskFolder>
+
+PERSISTENCE
+
+* JSON file stored in AppData
+* Save:
+
+  * folder positions
+  * contents
+  * layout settings
+* Load on startup
+
+V1 DEVELOPMENT STRATEGY (VERY IMPORTANT)
+
+DO NOT BUILD EVERYTHING AT ONCE
+
+Start with a vertical slice:
+
+STEP 1
+
+* Create MainOverlayForm (borderless)
+* Render ONE test folder icon
+
+STEP 2
+
+* Clicking icon opens FolderWindowForm
+* Hardcoded test items inside
+
+STEP 3
+
+* Clicking item launches a real file/app
+
+STEP 4
+
+* Save/load folder position + contents
+
+ONLY AFTER THAT:
+
+* drag/move
+* multiple folders
+* auto-arrange
+* scaling
+* polish
+
+WIN32 / SYSTEM NOTES
+
+You WILL likely need:
+
+* screen bounds (multi-monitor)
+* z-order handling
+* optional desktop-parent attachment (advanced, later)
+
+Use P/Invoke only when necessary. Keep it minimal.
+
+NON-GOALS FOR V1
+
+* No hover-open (add later)
+* No virtual desktop integration yet
+* No replacing real desktop icons
+* No complex animation system
+* No advanced theming
+
+STYLE RULES
+
+* Keep code simple and direct
+* Prefer explicit logic over abstraction
+* Avoid over-engineering
+* Small classes, clear responsibilities
+
+EXPECTED OUTPUT FROM COPILOT
+
+* Generate clean WinForms code
+* Use partial classes for forms
+* No MVVM scaffolding
+* No unnecessary patterns
+
+FIRST TASK
+
+Generate:
+
+* MainOverlayForm (borderless, full screen, black background for now)
+* A single FolderIconControl (simple clickable control)
+* Clicking it opens FolderWindowForm
+
+Keep implementation minimal and functional.
