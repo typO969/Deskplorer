@@ -146,6 +146,7 @@ namespace Deskplorer
             Cursor = Cursors.Hand,
 				ForeColor = Color.White,
             BackColor = Color.Transparent,
+            AutoEllipsis = true,
 				TextAlign = ContentAlignment.TopCenter,
 				Location = new Point(0, 58),
 				Size = new Size(82, 32)

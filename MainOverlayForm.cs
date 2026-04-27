@@ -13,11 +13,18 @@ namespace Deskplorer
 		private readonly ToolStripMenuItem _movementMenuItem;
       private readonly ToolStripMenuItem _renameFolderMenuItem;
       private readonly ToolStripMenuItem _removeFolderMenuItem;
+      private readonly ToolStripMenuItem _hoverOpenMenuItem;
+      private readonly ToolStripMenuItem _changeFolderIconMenuItem;
+      private readonly ToolStripMenuItem _chooseSystemFolderIconMenuItem;
 		private readonly ToolStripMenuItem _newFolderMenuItem;
+      private readonly System.Windows.Forms.Timer _hoverOpenTimer;
+		private readonly System.Windows.Forms.Timer _hoverCloseTimer;
 
 		private FolderWindowForm? _folderWindow;
 		private DeskFolder? _openedFolder;
 		private DeskFolder? _menuFolder;
+		private FolderIconControl? _hoverCandidateIcon;
+		private bool _hoverOpenEnabled;
 
 		private bool _isDraggingIcon;
 		private bool _suppressNextIconClick;
@@ -39,11 +46,20 @@ namespace Deskplorer
 				_persistenceService.Save(_appState);
 			}
 
+			_hoverOpenEnabled = _appState.HoverOpenEnabled;
+
 			_overlayMenu = new ContextMenuStrip();
 			_movementMenuItem = new ToolStripMenuItem();
          _renameFolderMenuItem = new ToolStripMenuItem("Rename Folder");
          _removeFolderMenuItem = new ToolStripMenuItem("Remove Folder");
+         _hoverOpenMenuItem = new ToolStripMenuItem("Enable Hover Open");
+         _changeFolderIconMenuItem = new ToolStripMenuItem("Change Folder Icon");
+         _chooseSystemFolderIconMenuItem = new ToolStripMenuItem("Choose System Folder Icon");
 			_newFolderMenuItem = new ToolStripMenuItem("New Folder");
+       _hoverOpenTimer = new System.Windows.Forms.Timer { Interval = 220 };
+			_hoverCloseTimer = new System.Windows.Forms.Timer { Interval = 250 };
+			_hoverOpenTimer.Tick += HoverOpenTimer_Tick;
+			_hoverCloseTimer.Tick += HoverCloseTimer_Tick;
 
 			InitializeOverlayMenu();
 			RenderAllFolderIcons();
@@ -57,6 +73,9 @@ namespace Deskplorer
 			_movementMenuItem.Click += MovementMenuItem_Click;
          _renameFolderMenuItem.Click += RenameFolderMenuItem_Click;
         _removeFolderMenuItem.Click += RemoveFolderMenuItem_Click;
+        _hoverOpenMenuItem.Click += HoverOpenMenuItem_Click;
+        _changeFolderIconMenuItem.Click += ChangeFolderIconMenuItem_Click;
+        _chooseSystemFolderIconMenuItem.Click += ChooseSystemFolderIconMenuItem_Click;
 			_newFolderMenuItem.Click += NewFolderMenuItem_Click;
 			_overlayMenu.Opening += OverlayMenu_Opening;
 
@@ -65,6 +84,9 @@ namespace Deskplorer
 				_movementMenuItem,
             _renameFolderMenuItem,
            _removeFolderMenuItem,
+            _changeFolderIconMenuItem,
+            _chooseSystemFolderIconMenuItem,
+           _hoverOpenMenuItem,
 				new ToolStripSeparator(),
 				_newFolderMenuItem
 			});
@@ -78,9 +100,12 @@ namespace Deskplorer
 			_movementMenuItem.Enabled = _menuFolder is not null;
          _renameFolderMenuItem.Enabled = _menuFolder is not null;
        _removeFolderMenuItem.Enabled = _menuFolder is not null;
+       _changeFolderIconMenuItem.Enabled = _menuFolder is not null;
+       _chooseSystemFolderIconMenuItem.Enabled = _menuFolder is not null;
 			_movementMenuItem.Text = _menuFolder is null
 				? "Allow Folder Movement"
 				: _menuFolder.Locked ? "Allow Folder Movement" : "Disable Folder Movement";
+        _hoverOpenMenuItem.Text = _hoverOpenEnabled ? "Disable Hover Open" : "Enable Hover Open";
 		}
 
 		private void RenderAllFolderIcons()
@@ -104,6 +129,8 @@ namespace Deskplorer
 			icon.MouseDown += FolderIcon_MouseDown;
 			icon.MouseMove += FolderIcon_MouseMove;
 			icon.MouseUp += FolderIcon_MouseUp;
+        icon.MouseEnter += FolderIcon_MouseEnter;
+			icon.MouseLeave += FolderIcon_MouseLeave;
 			icon.ContextMenuStrip = _overlayMenu;
 
 			foreach (Control child in icon.Controls)
@@ -111,11 +138,14 @@ namespace Deskplorer
 				child.MouseDown += FolderIcon_MouseDown;
 				child.MouseMove += FolderIcon_MouseMove;
 				child.MouseUp += FolderIcon_MouseUp;
+          child.MouseEnter += FolderIcon_MouseEnter;
+				child.MouseLeave += FolderIcon_MouseLeave;
 				child.ContextMenuStrip = _overlayMenu;
 			}
 
 			icon.Location = ScreenToOverlay(folder.ClosedLocation);
 			ApplyMovementVisual(folder, icon);
+			ApplyFolderIcon(folder, icon);
 
 			_folderIcons[folder.Id] = icon;
 			Controls.Add(icon);
@@ -134,11 +164,24 @@ namespace Deskplorer
 				return;
 			}
 
+			OpenFolderForIcon(icon, triggeredByHover: false);
+		}
+
+		private void OpenFolderForIcon(FolderIconControl icon, bool triggeredByHover)
+		{
+			if (icon.Tag is not DeskFolder folder)
+			{
+				return;
+			}
+
 			if (_folderWindow is not null && !_folderWindow.IsDisposed)
 			{
 				if (_openedFolder?.Id == folder.Id)
 				{
-              CloseOpenFolderWindow();
+             if (!triggeredByHover)
+					{
+						CloseOpenFolderWindow();
+					}
 					return;
 				}
 
@@ -153,17 +196,218 @@ namespace Deskplorer
         _folderWindow.KeyPreview = true;
 			_folderWindow.KeyDown += FolderWindow_KeyDown;
 			_folderWindow.Deactivate += FolderWindow_Deactivate;
+        _folderWindow.SetSharedContextMenu(_overlayMenu);
 			_folderWindow.FormClosed += FolderWindow_FormClosed;
 			_folderWindow.Show(this);
 			_openedFolder = folder;
+
+			if (_hoverOpenEnabled)
+			{
+				_hoverCloseTimer.Stop();
+				_hoverCloseTimer.Start();
+			}
+		}
+
+		private void HoverOpenMenuItem_Click(object? sender, EventArgs e)
+		{
+			_hoverOpenEnabled = !_hoverOpenEnabled;
+       _appState.HoverOpenEnabled = _hoverOpenEnabled;
+			_hoverOpenMenuItem.Text = _hoverOpenEnabled ? "Disable Hover Open" : "Enable Hover Open";
+
+			if (_hoverOpenEnabled)
+			{
+				CloseOpenFolderWindow();
+			}
+
+			if (!_hoverOpenEnabled)
+			{
+				_hoverCandidateIcon = null;
+				_hoverOpenTimer.Stop();
+				_hoverCloseTimer.Stop();
+        }
+			else if (_folderWindow is not null && !_folderWindow.IsDisposed)
+			{
+				_hoverCloseTimer.Stop();
+				_hoverCloseTimer.Start();
+			}
+
+			SaveState();
+		}
+
+		private void ChangeFolderIconMenuItem_Click(object? sender, EventArgs e)
+		{
+			if (_menuFolder is null)
+			{
+				return;
+			}
+
+			using var dialog = new OpenFileDialog
+			{
+				Title = "Choose folder icon",
+				Filter = "Image Files (*.png;*.jpg;*.jpeg;*.bmp;*.ico)|*.png;*.jpg;*.jpeg;*.bmp;*.ico|All files (*.*)|*.*",
+				CheckFileExists = true,
+				Multiselect = false
+			};
+
+			if (dialog.ShowDialog(this) != DialogResult.OK)
+			{
+				return;
+			}
+
+			_menuFolder.IconPath = dialog.FileName;
+			RefreshFolderIcon(_menuFolder);
+			SaveState();
+		}
+
+		private void ChooseSystemFolderIconMenuItem_Click(object? sender, EventArgs e)
+		{
+			if (_menuFolder is null)
+			{
+				return;
+			}
+
+			using var browser = new ImageResIconBrowserForm();
+			if (browser.ShowDialog(this) != DialogResult.OK || !browser.SelectedIconIndex.HasValue)
+			{
+				return;
+			}
+
+			_menuFolder.IconPath = $"imageres://{browser.SelectedIconIndex.Value}";
+			RefreshFolderIcon(_menuFolder);
+			SaveState();
+		}
+
+		private void FolderIcon_MouseEnter(object? sender, EventArgs e)
+		{
+			var icon = ResolveFolderIconFromSender(sender);
+			if (icon is null)
+			{
+				return;
+			}
+
+			_hoverCloseTimer.Stop();
+
+			if (!_hoverOpenEnabled || _isDraggingIcon)
+			{
+				return;
+			}
+
+			_hoverCandidateIcon = icon;
+			_hoverOpenTimer.Stop();
+			_hoverOpenTimer.Start();
+		}
+
+		private void FolderIcon_MouseLeave(object? sender, EventArgs e)
+		{
+			if (!_hoverOpenEnabled)
+			{
+				return;
+			}
+
+			var icon = ResolveFolderIconFromSender(sender);
+			if (icon is null)
+			{
+				return;
+			}
+
+			if (IsCursorOverControl(icon))
+			{
+				return;
+			}
+
+			if (_hoverCandidateIcon == icon)
+			{
+				_hoverOpenTimer.Stop();
+				_hoverCandidateIcon = null;
+			}
+
+			_hoverCloseTimer.Stop();
+			_hoverCloseTimer.Start();
+		}
+
+		private void HoverOpenTimer_Tick(object? sender, EventArgs e)
+		{
+			_hoverOpenTimer.Stop();
+
+			if (!_hoverOpenEnabled || _hoverCandidateIcon is null)
+			{
+				return;
+			}
+
+			if (!IsCursorOverControl(_hoverCandidateIcon))
+			{
+				_hoverCandidateIcon = null;
+				return;
+			}
+
+			OpenFolderForIcon(_hoverCandidateIcon, triggeredByHover: true);
+        _hoverCloseTimer.Stop();
+			_hoverCloseTimer.Start();
+		}
+
+		private void HoverCloseTimer_Tick(object? sender, EventArgs e)
+		{
+			if (!_hoverOpenEnabled || _folderWindow is null || _folderWindow.IsDisposed || _openedFolder is null)
+			{
+           _hoverCloseTimer.Stop();
+				return;
+			}
+
+			if (_folderWindow.IsInteractingWithWindow)
+			{
+				return;
+			}
+
+			if (_folderIcons.TryGetValue(_openedFolder.Id, out var icon) && IsCursorOverControl(icon))
+			{
+				return;
+			}
+
+			if (IsCursorOverControl(_folderWindow))
+			{
+				return;
+			}
+
+         _hoverCloseTimer.Stop();
+			CloseOpenFolderWindow();
+		}
+
+		private static bool IsCursorOverControl(Control control)
+		{
+			if (control.IsDisposed || !control.Visible)
+			{
+				return false;
+			}
+
+			var rect = control.RectangleToScreen(control.ClientRectangle);
+			return rect.Contains(Cursor.Position);
 		}
 
 		private void MainOverlayForm_MouseDown(object? sender, MouseEventArgs e)
 		{
+       if ((ModifierKeys & (Keys.Control | Keys.Alt)) != 0 && e.Button == MouseButtons.Right)
+			{
+				_menuFolder = null;
+				_overlayMenu.Show(this, PointToClient(Cursor.Position));
+				return;
+			}
+
 			if (e.Button == MouseButtons.Left && _folderWindow is not null && !_folderWindow.IsDisposed)
 			{
 				CloseOpenFolderWindow();
 			}
+		}
+
+		protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+		{
+			if (keyData == (Keys.Control | Keys.Apps) || keyData == (Keys.Alt | Keys.Apps))
+			{
+				_menuFolder = null;
+				_overlayMenu.Show(this, PointToClient(Cursor.Position));
+				return true;
+			}
+
+			return base.ProcessCmdKey(ref msg, keyData);
 		}
 
 		private void MainOverlayForm_KeyDown(object? sender, KeyEventArgs e)
@@ -195,6 +439,11 @@ namespace Deskplorer
 
 		private void FolderWindow_Deactivate(object? sender, EventArgs e)
 		{
+         if (_hoverOpenEnabled)
+			{
+				return;
+			}
+
 			if (_folderWindow is null || _folderWindow.IsDisposed)
 			{
 				return;
@@ -213,6 +462,9 @@ namespace Deskplorer
 			_folderWindow.KeyDown -= FolderWindow_KeyDown;
 			_folderWindow.Deactivate -= FolderWindow_Deactivate;
 			_folderWindow.FolderItemsChanged -= FolderWindow_FolderItemsChanged;
+        _hoverOpenTimer.Stop();
+			_hoverCloseTimer.Stop();
+			_hoverCandidateIcon = null;
 			_folderWindow.Close();
 		}
 
@@ -224,6 +476,11 @@ namespace Deskplorer
 			}
 
 			_menuFolder.Locked = !_menuFolder.Locked;
+       if (!_menuFolder.Locked)
+			{
+				CloseOpenFolderWindow();
+			}
+
 			if (_folderIcons.TryGetValue(_menuFolder.Id, out var icon))
 			{
 				ApplyMovementVisual(_menuFolder, icon);
@@ -341,7 +598,67 @@ namespace Deskplorer
 			{
 				icon.FolderName = folder.Name;
 				icon.ItemCount = folder.Items.Count;
+           ApplyFolderIcon(folder, icon);
 			}
+		}
+
+		private static void ApplyFolderIcon(DeskFolder folder, FolderIconControl icon)
+		{
+         if (!string.IsNullOrWhiteSpace(folder.IconPath) && folder.IconPath.StartsWith("imageres://", StringComparison.OrdinalIgnoreCase))
+			{
+				if (int.TryParse(folder.IconPath[11..], out var index))
+				{
+					try
+					{
+						var cache = new IconCacheService();
+						icon.IconImage = cache.GetImageResIconImage(index);
+						return;
+					}
+					catch
+					{
+					}
+				}
+			}
+
+       if (string.IsNullOrWhiteSpace(folder.IconPath))
+			{
+				icon.IconImage = null;
+				return;
+			}
+
+			if (string.Equals(folder.IconPath, "__default_folder__", StringComparison.OrdinalIgnoreCase))
+			{
+				icon.IconImage = null;
+				return;
+			}
+
+			if (!string.IsNullOrWhiteSpace(folder.IconPath) && File.Exists(folder.IconPath))
+			{
+            if (string.Equals(Path.GetExtension(folder.IconPath), ".ico", StringComparison.OrdinalIgnoreCase))
+				{
+					try
+					{
+						using var iconFile = new Icon(folder.IconPath, new Size(32, 32));
+						icon.IconImage = iconFile.ToBitmap();
+						return;
+					}
+					catch
+					{
+					}
+				}
+
+				try
+				{
+					using var image = Image.FromFile(folder.IconPath);
+					icon.IconImage = new Bitmap(image);
+					return;
+				}
+				catch
+				{
+				}
+			}
+
+         icon.IconImage = null;
 		}
 
 		private List<DeskItem> CreateDefaultItems()

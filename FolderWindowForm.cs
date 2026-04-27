@@ -32,6 +32,8 @@ namespace Deskplorer
 		private Size _resizeStartSize;
 		private Point _resizeStartLocation;
 
+     public bool IsInteractingWithWindow => _isDraggingWindow || _isResizingWindow;
+
 		public event EventHandler? FolderItemsChanged;
 
     public FolderWindowForm(DeskFolder folder, Rectangle anchorIconScreenBounds)
@@ -362,6 +364,16 @@ namespace Deskplorer
 			Text = _folder.Name;
 		}
 
+		public void SetSharedContextMenu(ContextMenuStrip menu)
+		{
+			ContextMenuStrip = menu;
+			_headerPanel.ContextMenuStrip = menu;
+			_titleLabel.ContextMenuStrip = menu;
+			_quickActionsPanel.ContextMenuStrip = menu;
+			_itemsPanel.ContextMenuStrip = menu;
+			_statusLabel.ContextMenuStrip = menu;
+		}
+
 		private void ApplyFolderData()
 		{
 			RefreshFolderHeader();
@@ -553,14 +565,70 @@ namespace Deskplorer
 
 		private void WireItemContextMenu(Control tile, DeskItem item)
 		{
+         if (tile.Controls.Count > 1 && tile.Controls[1] is Label label)
+			{
+				label.Text = FormatLabelText(item.DisplayName, label.Width, label.Font, 2);
+				_toolTip.SetToolTip(label, item.DisplayName);
+			}
+
 			tile.MouseUp += ItemControl_MouseUp;
+        tile.ContextMenuStrip = _itemContextMenu;
 			tile.Tag = item;
 
 			foreach (Control child in tile.Controls)
 			{
 				child.MouseUp += ItemControl_MouseUp;
+          child.ContextMenuStrip = _itemContextMenu;
 				child.Tag = item;
 			}
+		}
+
+		private static string FormatLabelText(string text, int maxWidth, Font font, int maxLines)
+		{
+			if (string.IsNullOrWhiteSpace(text))
+			{
+				return string.Empty;
+			}
+
+			var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+			if (words.Length == 0)
+			{
+				return string.Empty;
+			}
+
+			var lines = new List<string>();
+			var currentLine = string.Empty;
+
+			foreach (var word in words)
+			{
+				var candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
+				if (TextRenderer.MeasureText(candidate, font).Width <= maxWidth || string.IsNullOrEmpty(currentLine))
+				{
+					currentLine = candidate;
+					continue;
+				}
+
+				lines.Add(currentLine);
+				currentLine = word;
+
+				if (lines.Count == maxLines - 1)
+				{
+					break;
+				}
+			}
+
+			if (lines.Count < maxLines)
+			{
+				lines.Add(currentLine);
+			}
+
+			var joined = string.Join("\n", lines.Take(maxLines));
+			if (joined.Length < text.Length)
+			{
+				joined = $"{joined.TrimEnd()}…";
+			}
+
+			return joined;
 		}
 
 		private void WireItemDrag(Control tile, DeskItem item)

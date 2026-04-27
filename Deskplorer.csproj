@@ -19,7 +19,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="Assets\Icons\folder01.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include=".github\copilot-instructions.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\Icons\folder01.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

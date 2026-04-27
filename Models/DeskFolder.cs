@@ -10,6 +10,7 @@ namespace Deskplorer.Models
 		public bool Locked { get; set; }
       public bool AutoArrange { get; set; } = false;
 		public int ItemIconSize { get; set; } = 48;
+    public string IconPath { get; set; } = string.Empty;
 		public List<DeskItem> Items { get; set; } = new();
 	}
 }
