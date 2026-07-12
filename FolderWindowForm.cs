@@ -13,7 +13,9 @@ namespace Deskplorer
      private readonly Rectangle _anchorIconScreenBounds;
 		private readonly LaunchService _launchService = new();
     private readonly IconCacheService _iconCacheService = new();
-		private readonly ContextMenuStrip _itemContextMenu = new();
+		private readonly ToolStripMenuItem _windowMenuItem = new("Window");
+		private const string WindowMenuItemName = "_windowMenuItem";
+		private const string WindowMenuSeparatorName = "_windowMenuSeparator";
 		private readonly ToolTip _toolTip = new();
 		private DeskItem? _contextMenuItem;
 		private Label? _arrangeModeAction;
@@ -42,7 +44,7 @@ namespace Deskplorer
         _anchorIconScreenBounds = anchorIconScreenBounds;
 			InitializeComponent();
 			InitializeQuickActions();
-			InitializeItemContextMenu();
+        InitializeWindowMenu();
          InitializeDropSupport();
          InitializeWindowMoveResizeSupport();
 			ApplyFolderData();
@@ -75,6 +77,7 @@ namespace Deskplorer
 			resizeHandle.BringToFront();
 
 			Shown += (_, _) => ApplyConstrainedBounds();
+			Shown += (_, _) => LoadItemIconsAsync();
 		}
 
 		private void HeaderDrag_MouseDown(object? sender, MouseEventArgs e)
@@ -268,49 +271,22 @@ namespace Deskplorer
 				return;
 			}
 
-			var addedCount = 0;
-			var duplicateCount = 0;
 			var dropPoint = _itemsPanel.PointToClient(new Point(e.X, e.Y));
 			var nextDropPoint = ClampTileLocation(dropPoint, new Size(82, 92));
-
-			foreach (var path in droppedPaths)
-			{
-				if (string.IsNullOrWhiteSpace(path))
+			var result = DeskFolderItemService.AddFilesToFolder(
+				_folder,
+				droppedPaths,
+				_folder.AutoArrange ? null : _ =>
 				{
-					continue;
-				}
-
-				if (_folder.Items.Any(i => string.Equals(i.FilePath, path, StringComparison.OrdinalIgnoreCase)))
-				{
-					duplicateCount++;
-					continue;
-				}
-
-				var displayName = Path.GetFileNameWithoutExtension(path);
-				if (string.IsNullOrWhiteSpace(displayName))
-				{
-					displayName = Path.GetFileName(path);
-				}
-
-				var item = new DeskItem
-				{
-					DisplayName = displayName,
-					FilePath = path
-				};
-
-				if (!_folder.AutoArrange)
-				{
-					item.CustomPosition = nextDropPoint;
+					var point = nextDropPoint;
 					nextDropPoint = ClampTileLocation(new Point(nextDropPoint.X + 24, nextDropPoint.Y + 24), new Size(82, 92));
-				}
+					return point;
+				},
+				_iconCacheService.BuildCacheKey);
 
-				_folder.Items.Add(item);
-				addedCount++;
-			}
-
-			if (addedCount == 0)
+			if (result.addedCount == 0)
 			{
-				if (duplicateCount > 0)
+				if (result.duplicateCount > 0)
 				{
 					MessageBox.Show(this, "Dropped items are already in this folder.", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
 				}
@@ -320,10 +296,31 @@ namespace Deskplorer
 			ApplyFolderData();
 			FolderItemsChanged?.Invoke(this, EventArgs.Empty);
 
-			if (duplicateCount > 0)
+			if (result.duplicateCount > 0)
 			{
-				MessageBox.Show(this, $"Added {addedCount} item(s). {duplicateCount} duplicate item(s) were skipped.", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				MessageBox.Show(this, $"Added {result.addedCount} item(s). {result.duplicateCount} duplicate item(s) were skipped.", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
 			}
+		}
+
+		protected override void OnMouseUp(MouseEventArgs e)
+		{
+			if (e.Button == MouseButtons.Right && _contextMenuItem is null)
+			{
+				ContextMenuStrip?.Show(this, PointToClient(Cursor.Position));
+				return;
+			}
+
+			base.OnMouseUp(e);
+		}
+
+		protected override void OnMouseDown(MouseEventArgs e)
+		{
+			if (e.Button == MouseButtons.Left)
+			{
+				_contextMenuItem = null;
+			}
+
+			base.OnMouseDown(e);
 		}
 
 		private void InitializeQuickActions()
@@ -341,21 +338,32 @@ namespace Deskplorer
 			UpdateArrangeModeActionText();
 		}
 
-		private void InitializeItemContextMenu()
+     private void InitializeWindowMenu()
 		{
-       var refreshIconMenuItem = new ToolStripMenuItem("Refresh Icon");
+        var refreshIconMenuItem = new ToolStripMenuItem("Refresh Tile Icon") { Name = "_refreshTileIconMenuItem" };
 			refreshIconMenuItem.Click += RefreshIconMenuItem_Click;
-			var resetIconMenuItem = new ToolStripMenuItem("Reset Icon");
+       var resetIconMenuItem = new ToolStripMenuItem("Reset Tile Icon") { Name = "_resetTileIconMenuItem" };
 			resetIconMenuItem.Click += ResetIconMenuItem_Click;
-			var renameMenuItem = new ToolStripMenuItem("Rename");
+         var resetAllIconsMenuItem = new ToolStripMenuItem("Reset All Folder's Icons") { Name = "_resetAllFolderIconsMenuItem" };
+			resetAllIconsMenuItem.Click += ResetAllIconsMenuItem_Click;
+        var renameMenuItem = new ToolStripMenuItem("Rename Tile") { Name = "_renameTileMenuItem" };
 			renameMenuItem.Click += RenameMenuItem_Click;
-			var removeMenuItem = new ToolStripMenuItem("Remove from folder");
+       var removeMenuItem = new ToolStripMenuItem("Remove from Folder") { Name = "_removeTileMenuItem" };
 			removeMenuItem.Click += RemoveMenuItem_Click;
-        _itemContextMenu.Items.Add(refreshIconMenuItem);
-			_itemContextMenu.Items.Add(resetIconMenuItem);
-			_itemContextMenu.Items.Add(new ToolStripSeparator());
-			_itemContextMenu.Items.Add(renameMenuItem);
-			_itemContextMenu.Items.Add(removeMenuItem);
+			var importMenuItem = new ToolStripMenuItem("Import desktop shortcut");
+			var importMultipleMenuItem = new ToolStripMenuItem("Import multiple desktop shortcuts...");
+			importMultipleMenuItem.Click += ImportMultipleDesktopShortcutsMenuItem_Click;
+			importMenuItem.DropDownItems.Add(importMultipleMenuItem);
+
+			_windowMenuItem.Name = WindowMenuItemName;
+			_windowMenuItem.DropDownItems.Add(refreshIconMenuItem);
+			_windowMenuItem.DropDownItems.Add(resetIconMenuItem);
+			_windowMenuItem.DropDownItems.Add(resetAllIconsMenuItem);
+			_windowMenuItem.DropDownItems.Add(renameMenuItem);
+			_windowMenuItem.DropDownItems.Add(removeMenuItem);
+			_windowMenuItem.DropDownItems.Add(new ToolStripSeparator());
+			_windowMenuItem.DropDownItems.Add(importMenuItem);
+			_windowMenuItem.DropDownOpening += WindowMenu_Opening;
 		}
 
 		public void RefreshFolderHeader()
@@ -364,8 +372,27 @@ namespace Deskplorer
 			Text = _folder.Name;
 		}
 
-		public void SetSharedContextMenu(ContextMenuStrip menu)
+		public void ReloadFolderData()
 		{
+			ApplyFolderData();
+		}
+
+     public void SetSharedContextMenu(ContextMenuStrip menu)
+		{
+			var existingWindowMenuItems = menu.Items.OfType<ToolStripMenuItem>().Where(item => string.Equals(item.Name, WindowMenuItemName, StringComparison.Ordinal)).ToList();
+			foreach (var existing in existingWindowMenuItems)
+			{
+				menu.Items.Remove(existing);
+			}
+
+			foreach (var existingSeparator in menu.Items.OfType<ToolStripSeparator>().Where(item => string.Equals(item.Name, WindowMenuSeparatorName, StringComparison.Ordinal)).ToList())
+			{
+				menu.Items.Remove(existingSeparator);
+			}
+
+			menu.Items.Add(new ToolStripSeparator { Name = WindowMenuSeparatorName });
+			menu.Items.Add(_windowMenuItem);
+
 			ContextMenuStrip = menu;
 			_headerPanel.ContextMenuStrip = menu;
 			_titleLabel.ContextMenuStrip = menu;
@@ -382,6 +409,9 @@ namespace Deskplorer
 				ClientSize = _folder.OpenSize;
 			}
 
+			_itemsPanel.SuspendLayout();
+			try
+			{
 			_itemsPanel.Controls.Clear();
 			if (_folder.Items.Count == 0)
 			{
@@ -408,12 +438,95 @@ namespace Deskplorer
 			}
 
 			_statusLabel.Text = $"{_folder.Items.Count} items";
+			}
+			finally
+			{
+				_itemsPanel.ResumeLayout(true);
+			}
+
+			if (IsHandleCreated && !IsDisposed)
+			{
+				LoadItemIconsAsync();
+			}
+		}
+
+		private void LoadItemIconsAsync()
+		{
+			if (!IsHandleCreated || IsDisposed)
+			{
+				return;
+			}
+
+			foreach (Control tile in _itemsPanel.Controls)
+			{
+				if (tile.Tag is not DeskItem item || tile.Controls.Count == 0 || tile.Controls[0] is not PictureBox icon || icon.IsDisposed)
+				{
+					continue;
+				}
+
+				var filePath = item.FilePath;
+				var cacheKey = item.IconCacheKey;
+				_ = System.Threading.Tasks.Task.Run(() => _iconCacheService.GetIconImage(filePath, cacheKey))
+					.ContinueWith(task =>
+					{
+						if (!task.IsCompletedSuccessfully || IsDisposed || icon.IsDisposed)
+						{
+							return;
+						}
+
+						try
+						{
+							if (!icon.IsDisposed && ReferenceEquals(icon.Tag, item))
+							{
+								if (icon.InvokeRequired)
+								{
+									icon.BeginInvoke(new Action(() =>
+									{
+										if (!icon.IsDisposed && ReferenceEquals(icon.Tag, item))
+										{
+											icon.Image = task.Result;
+										}
+									}));
+								}
+								else
+								{
+									icon.Image = task.Result;
+								}
+							}
+						}
+						catch
+						{
+						}
+					}, System.Threading.Tasks.TaskScheduler.Default);
+			}
 		}
 
 		private void ArrangeModeAction_Click(object? sender, EventArgs e)
 		{
 			_folder.AutoArrange = !_folder.AutoArrange;
 			UpdateArrangeModeActionText();
+			ApplyFolderData();
+			FolderItemsChanged?.Invoke(this, EventArgs.Empty);
+		}
+
+		private void ResetAllIconsMenuItem_Click(object? sender, EventArgs e)
+		{
+			var anyReset = false;
+			foreach (var item in _folder.Items)
+			{
+				if (!string.IsNullOrWhiteSpace(item.IconCacheKey))
+				{
+					_iconCacheService.RemoveCachedIcon(item.IconCacheKey);
+					item.IconCacheKey = string.Empty;
+					anyReset = true;
+				}
+			}
+
+			if (!anyReset)
+			{
+				return;
+			}
+
 			ApplyFolderData();
 			FolderItemsChanged?.Invoke(this, EventArgs.Empty);
 		}
@@ -438,6 +551,11 @@ namespace Deskplorer
 			_contextMenuItem.IconCacheKey = _iconCacheService.BuildCacheKey(_contextMenuItem.FilePath);
 			ApplyFolderData();
 			FolderItemsChanged?.Invoke(this, EventArgs.Empty);
+		}
+
+		private void ImportMultipleDesktopShortcutsMenuItem_Click(object? sender, EventArgs e)
+		{
+			MessageBox.Show(this, "Importing desktop shortcuts is not available yet.", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
 		}
 
 		private void ResetIconMenuItem_Click(object? sender, EventArgs e)
@@ -572,20 +690,59 @@ namespace Deskplorer
 			}
 
 			tile.MouseUp += ItemControl_MouseUp;
-        tile.ContextMenuStrip = _itemContextMenu;
+				tile.ContextMenuStrip = ContextMenuStrip;
 			tile.Tag = item;
 
 			foreach (Control child in tile.Controls)
 			{
 				child.MouseUp += ItemControl_MouseUp;
-          child.ContextMenuStrip = _itemContextMenu;
+				child.ContextMenuStrip = ContextMenuStrip;
 				child.Tag = item;
+			}
+		}
+
+		private void WindowMenu_Opening(object? sender, EventArgs e)
+		{
+			var enableItemActions = _contextMenuItem is not null;
+			var refreshMenuItem = _windowMenuItem.DropDownItems.Find("_refreshTileIconMenuItem", false).OfType<ToolStripMenuItem>().FirstOrDefault();
+			if (refreshMenuItem is not null)
+			{
+				refreshMenuItem.Enabled = enableItemActions;
+			}
+
+			var resetMenuItem = _windowMenuItem.DropDownItems.Find("_resetTileIconMenuItem", false).OfType<ToolStripMenuItem>().FirstOrDefault();
+			if (resetMenuItem is not null)
+			{
+				resetMenuItem.Enabled = enableItemActions;
+			}
+
+			var resetAllMenuItem = _windowMenuItem.DropDownItems.Find("_resetAllFolderIconsMenuItem", false).OfType<ToolStripMenuItem>().FirstOrDefault();
+			if (resetAllMenuItem is not null)
+			{
+				resetAllMenuItem.Enabled = _folder.Items.Count > 0;
+			}
+
+			var renameMenuItem = _windowMenuItem.DropDownItems.Find("_renameTileMenuItem", false).OfType<ToolStripMenuItem>().FirstOrDefault();
+			if (renameMenuItem is not null)
+			{
+				renameMenuItem.Enabled = enableItemActions;
+			}
+
+			var removeMenuItem = _windowMenuItem.DropDownItems.Find("_removeTileMenuItem", false).OfType<ToolStripMenuItem>().FirstOrDefault();
+			if (removeMenuItem is not null)
+			{
+				removeMenuItem.Enabled = enableItemActions;
 			}
 		}
 
 		private static string FormatLabelText(string text, int maxWidth, Font font, int maxLines)
 		{
 			if (string.IsNullOrWhiteSpace(text))
+			{
+				return string.Empty;
+			}
+
+			if (maxWidth <= 0 || maxLines <= 0)
 			{
 				return string.Empty;
 			}
@@ -599,10 +756,12 @@ namespace Deskplorer
 			var lines = new List<string>();
 			var currentLine = string.Empty;
 
-			foreach (var word in words)
+         var truncated = false;
+			for (var i = 0; i < words.Length; i++)
 			{
+          var word = words[i];
 				var candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-				if (TextRenderer.MeasureText(candidate, font).Width <= maxWidth || string.IsNullOrEmpty(currentLine))
+          if (FitsLine(candidate, maxWidth, font) || string.IsNullOrEmpty(currentLine))
 				{
 					currentLine = candidate;
 					continue;
@@ -611,24 +770,50 @@ namespace Deskplorer
 				lines.Add(currentLine);
 				currentLine = word;
 
-				if (lines.Count == maxLines - 1)
+          if (lines.Count == maxLines - 1)
 				{
+               truncated = i < words.Length - 1;
 					break;
 				}
 			}
 
-			if (lines.Count < maxLines)
+         if (lines.Count < maxLines)
 			{
 				lines.Add(currentLine);
 			}
 
-			var joined = string.Join("\n", lines.Take(maxLines));
-			if (joined.Length < text.Length)
+			if (lines.Count > 0)
 			{
-				joined = $"{joined.TrimEnd()}…";
+				var lastIndex = Math.Min(lines.Count, maxLines) - 1;
+				var lastLine = lines[lastIndex];
+				if (truncated || !FitsLine(lastLine, maxWidth, font))
+				{
+					lines[lastIndex] = TrimLineToWidth(lastLine, maxWidth, font);
+				}
 			}
 
-			return joined;
+			return string.Join("\n", lines.Take(maxLines));
+		}
+
+		private static bool FitsLine(string text, int maxWidth, Font font)
+		{
+			return TextRenderer.MeasureText(text, font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width <= maxWidth;
+		}
+
+		private static string TrimLineToWidth(string text, int maxWidth, Font font)
+		{
+			var trimmed = text.TrimEnd();
+			if (string.IsNullOrEmpty(trimmed))
+			{
+				return string.Empty;
+			}
+
+			while (trimmed.Length > 0 && !FitsLine($"{trimmed}…", maxWidth, font))
+			{
+				trimmed = trimmed[..^1];
+			}
+
+			return trimmed.Length == 0 ? "…" : $"{trimmed}…";
 		}
 
 		private void WireItemDrag(Control tile, DeskItem item)
@@ -645,43 +830,59 @@ namespace Deskplorer
 			}
 		}
 
+		public bool IsShowingDialog { get; private set; }
+
 		private void AddItemAction_Click(object? sender, EventArgs e)
-		{
-			using var dialog = new OpenFileDialog
-			{
-				Title = "Add item to folder",
-				Filter = "All files (*.*)|*.*",
-				CheckFileExists = true,
-				Multiselect = false
-			};
+{
+    using var dialog = new OpenFileDialog
+    {
+        Title = "Add item to folder",
+        Filter = "All files (*.*)|*.*",
+        CheckFileExists = true,
+           Multiselect = true
+    };
 
-			if (dialog.ShowDialog(this) != DialogResult.OK)
+    try
+    {
+        IsShowingDialog = true;
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+    }
+    finally
+    {
+        IsShowingDialog = false;
+    }
+
+				var nextDropPoint = ClampTileLocation(new Point(10, 10), new Size(82, 92));
+				var result = DeskFolderItemService.AddFilesToFolder(
+					_folder,
+					dialog.FileNames,
+					_folder.AutoArrange ? null : _ =>
+					{
+						var point = nextDropPoint;
+						nextDropPoint = ClampTileLocation(new Point(nextDropPoint.X + 24, nextDropPoint.Y + 24), new Size(82, 92));
+						return point;
+					},
+					_iconCacheService.BuildCacheKey);
+
+			if (result.addedCount == 0)
 			{
+				if (result.duplicateCount > 0)
+				{
+					MessageBox.Show(this, "Dropped items are already in this folder.", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				}
 				return;
 			}
-
-			var filePath = dialog.FileName;
-			var displayName = Path.GetFileNameWithoutExtension(filePath);
-			if (string.IsNullOrWhiteSpace(displayName))
-			{
-				displayName = Path.GetFileName(filePath);
-			}
-
-			if (_folder.Items.Any(i => string.Equals(i.FilePath, filePath, StringComparison.OrdinalIgnoreCase)))
-			{
-				MessageBox.Show(this, "That item is already in this folder.", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
-				return;
-			}
-
-			_folder.Items.Add(new DeskItem
-			{
-				DisplayName = displayName,
-           FilePath = filePath,
-				IconCacheKey = _iconCacheService.BuildCacheKey(filePath)
-			});
 
 			ApplyFolderData();
 			FolderItemsChanged?.Invoke(this, EventArgs.Empty);
+
+			if (result.duplicateCount > 0)
+			{
+				MessageBox.Show(this, $"Added {result.addedCount} item(s). {result.duplicateCount} duplicate item(s) were skipped.", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+			}
 		}
 
 		private void ItemControl_MouseUp(object? sender, MouseEventArgs e)
@@ -694,18 +895,21 @@ namespace Deskplorer
 			var item = control.Tag as DeskItem ?? control.Parent?.Tag as DeskItem;
 			if (item is null)
 			{
+           _contextMenuItem = null;
 				return;
 			}
+
 
 			if (e.Button == MouseButtons.Right)
 			{
 				_contextMenuItem = item;
-				_itemContextMenu.Show(control, e.Location);
+				ContextMenuStrip?.Show(control, e.Location);
 				return;
 			}
 
 			if (e.Button == MouseButtons.Left)
 			{
+            _contextMenuItem = item;
           if (_didDragTile)
 				{
 					_didDragTile = false;
@@ -864,5 +1068,6 @@ namespace Deskplorer
 				MessageBox.Show(this, $"Unable to launch '{item.FilePath}'.\n{errorMessage}", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Error);
 			}
 		}
+
 	}
 }

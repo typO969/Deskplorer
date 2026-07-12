@@ -85,7 +85,7 @@ namespace Deskplorer
          Controls.Add(_iconPanel);
          Controls.Add(topPanel);
 
-         LoadIconRange();
+         Shown += (_, _) => LoadIconRange();
       }
 
       private void LoadIconRange()
@@ -99,8 +99,7 @@ namespace Deskplorer
             (start, end) = (end, start);
          }
 
-         var available = _iconCacheService.GetAvailableImageResIconIndexes(start, end);
-         foreach (var index in available)
+         for (var index = start; index <= end; index++)
          {
             var tile = CreateIconTile(index);
             _iconPanel.Controls.Add(tile);

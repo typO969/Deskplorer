@@ -101,6 +101,11 @@ namespace Deskplorer.Controls
 				return string.Empty;
 			}
 
+			if (maxWidth <= 0 || maxLines <= 0)
+			{
+				return string.Empty;
+			}
+
 			var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 			if (words.Length == 0)
 			{
@@ -110,12 +115,13 @@ namespace Deskplorer.Controls
 			var lines = new List<string>();
 			var currentLine = string.Empty;
 
-			foreach (var word in words)
+         var truncated = false;
+			for (var i = 0; i < words.Length; i++)
 			{
+          var word = words[i];
 				var candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-				var candidateWidth = TextRenderer.MeasureText(candidate, font).Width;
 
-				if (candidateWidth <= maxWidth || string.IsNullOrEmpty(currentLine))
+				if (FitsLine(candidate, maxWidth, font) || string.IsNullOrEmpty(currentLine))
 				{
 					currentLine = candidate;
 					continue;
@@ -124,30 +130,50 @@ namespace Deskplorer.Controls
 				lines.Add(currentLine);
 				currentLine = word;
 
-				if (lines.Count == maxLines - 1)
+          if (lines.Count == maxLines - 1)
 				{
+               truncated = i < words.Length - 1;
 					break;
 				}
 			}
 
-			if (lines.Count < maxLines)
+         if (lines.Count < maxLines)
 			{
 				lines.Add(currentLine);
 			}
 
-			var joined = string.Join("\n", lines.Take(maxLines));
-			if (joined.Length < text.Length)
+			if (lines.Count > 0)
 			{
-				var truncated = joined.TrimEnd();
-				while (truncated.Length > 0 && TextRenderer.MeasureText($"{truncated}…", font).Width > maxWidth * maxLines)
+				var lastIndex = Math.Min(lines.Count, maxLines) - 1;
+				var lastLine = lines[lastIndex];
+				if (truncated || !FitsLine(lastLine, maxWidth, font))
 				{
-					truncated = truncated[..^1];
+					lines[lastIndex] = TrimLineToWidth(lastLine, maxWidth, font);
 				}
-
-				joined = $"{truncated.TrimEnd()}…";
 			}
 
-			return joined;
+			return string.Join("\n", lines.Take(maxLines));
+		}
+
+		private static bool FitsLine(string text, int maxWidth, Font font)
+		{
+			return TextRenderer.MeasureText(text, font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width <= maxWidth;
+		}
+
+		private static string TrimLineToWidth(string text, int maxWidth, Font font)
+		{
+			var trimmed = text.TrimEnd();
+			if (string.IsNullOrEmpty(trimmed))
+			{
+				return string.Empty;
+			}
+
+			while (trimmed.Length > 0 && !FitsLine($"{trimmed}…", maxWidth, font))
+			{
+				trimmed = trimmed[..^1];
+			}
+
+			return trimmed.Length == 0 ? "…" : $"{trimmed}…";
 		}
 
 		private static Image LoadDefaultFolderImage()

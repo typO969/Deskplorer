@@ -134,7 +134,7 @@ namespace Deskplorer
 			var icon = new PictureBox
 			{
            Cursor = Cursors.Hand,
-           Image = _iconCacheService.GetIconImage(item.FilePath, item.IconCacheKey),
+				Image = SystemIcons.Application.ToBitmap(),
 				Location = new Point(17, 4),
 				Size = new Size(48, 48),
 				SizeMode = PictureBoxSizeMode.StretchImage
