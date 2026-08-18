@@ -5,14 +5,16 @@ namespace Deskplorer
 {
 	public partial class FolderWindowForm : Form
 	{
-      private const int ManualGridSize = 12;
+		private const int ManualGridSize = 12;
 		private const int DragActivationThreshold = 6;
-    private static readonly Size MinimumWindowSize = new(300, 220);
+		private const int DefaultItemIconSize = 48;
+		private const int ItemTilePadding = 4;
+		private static readonly Size MaximumWindowSize = new(1000, 1000);
 
 		private readonly DeskFolder _folder;
-     private readonly Rectangle _anchorIconScreenBounds;
+		private readonly Rectangle _anchorIconScreenBounds;
 		private readonly LaunchService _launchService = new();
-    private readonly IconCacheService _iconCacheService = new();
+		private readonly IconCacheService _iconCacheService = new();
 		private readonly ToolStripMenuItem _windowMenuItem = new("Window");
 		private const string WindowMenuItemName = "_windowMenuItem";
 		private const string WindowMenuSeparatorName = "_windowMenuSeparator";
@@ -24,7 +26,7 @@ namespace Deskplorer
 		private Point _dragStartMouse;
 		private Point _dragStartTileLocation;
 		private bool _isDraggingTile;
-    private bool _didDragTile;
+		private bool _didDragTile;
 		private bool _suppressLaunchOnMouseUp;
 		private bool _isDraggingWindow;
 		private Point _windowDragStartMouse;
@@ -34,19 +36,24 @@ namespace Deskplorer
 		private Size _resizeStartSize;
 		private Point _resizeStartLocation;
 
-     public bool IsInteractingWithWindow => _isDraggingWindow || _isResizingWindow;
+		public bool IsInteractingWithWindow => _isDraggingWindow || _isResizingWindow;
 
 		public event EventHandler? FolderItemsChanged;
 
-    public FolderWindowForm(DeskFolder folder, Rectangle anchorIconScreenBounds)
+		public FolderWindowForm()
+			: this(CreateDesignTimeFolder(), new Rectangle(0, 0, 48, 48))
+		{
+		}
+
+		public FolderWindowForm(DeskFolder folder, Rectangle anchorIconScreenBounds)
 		{
 			_folder = folder;
-        _anchorIconScreenBounds = anchorIconScreenBounds;
+			_anchorIconScreenBounds = anchorIconScreenBounds;
 			InitializeComponent();
 			InitializeQuickActions();
-        InitializeWindowMenu();
-         InitializeDropSupport();
-         InitializeWindowMoveResizeSupport();
+			InitializeWindowMenu();
+			InitializeDropSupport();
+			InitializeWindowMoveResizeSupport();
 			ApplyFolderData();
 		}
 
@@ -63,21 +70,57 @@ namespace Deskplorer
 			var resizeHandle = new Panel
 			{
 				Name = "_resizeHandle",
-				Size = new Size(14, 14),
+				Size = new Size(24, 24),
 				Cursor = Cursors.SizeNWSE,
-				BackColor = Color.Transparent,
+				BackColor = Color.FromArgb(220, 72, 72, 72),
+				BorderStyle = BorderStyle.FixedSingle,
 				Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
-				Location = new Point(ClientSize.Width - 14, ClientSize.Height - 14)
+				Location = new Point(ClientSize.Width - 24, ClientSize.Height - 24)
 			};
+
+			var resizeGlyph = new Label
+			{
+				Dock = DockStyle.Fill,
+				Text = "⋱",
+				TextAlign = ContentAlignment.MiddleCenter,
+				ForeColor = Color.White,
+				BackColor = Color.Transparent,
+				Font = new Font("Segoe UI Symbol", 10F, FontStyle.Bold),
+				Cursor = Cursors.SizeNWSE
+			};
+
+			resizeHandle.Controls.Add(resizeGlyph);
 
 			resizeHandle.MouseDown += ResizeHandle_MouseDown;
 			resizeHandle.MouseMove += ResizeHandle_MouseMove;
 			resizeHandle.MouseUp += ResizeHandle_MouseUp;
+			resizeGlyph.MouseDown += ResizeHandle_MouseDown;
+			resizeGlyph.MouseMove += ResizeHandle_MouseMove;
+			resizeGlyph.MouseUp += ResizeHandle_MouseUp;
 			Controls.Add(resizeHandle);
 			resizeHandle.BringToFront();
 
 			Shown += (_, _) => ApplyConstrainedBounds();
 			Shown += (_, _) => LoadItemIconsAsync();
+		}
+
+		private static DeskFolder CreateDesignTimeFolder()
+		{
+			return new DeskFolder
+			{
+				Name = "deskplorer folder",
+				ClosedLocation = new Point(0, 0),
+				OpenLocation = new Point(0, 0),
+				OpenSize = DeskFolder.DefaultOpenSize,
+				ItemIconSize = DefaultItemIconSize,
+				Items =
+				[
+					new DeskItem { DisplayName = "Notepad", FilePath = "notepad.exe" },
+					new DeskItem { DisplayName = "Explorer", FilePath = "explorer.exe" },
+					new DeskItem { DisplayName = "Paint", FilePath = "mspaint.exe" },
+					new DeskItem { DisplayName = "Calculator", FilePath = "calc.exe" }
+				]
+			};
 		}
 
 		private void HeaderDrag_MouseDown(object? sender, MouseEventArgs e)
@@ -160,9 +203,9 @@ namespace Deskplorer
 
 		private Point ClampWindowLocation(Point proposed, Size size)
 		{
-         var bounds = Screen.FromPoint(_anchorIconScreenBounds.Location).WorkingArea;
+			var bounds = Screen.FromPoint(_anchorIconScreenBounds.Location).WorkingArea;
 			var maxX = Math.Max(bounds.Left, bounds.Right - size.Width);
-        var maxY = Math.Max(bounds.Top, bounds.Bottom - size.Height);
+			var maxY = Math.Max(bounds.Top, bounds.Bottom - size.Height);
 			var centerX = _anchorIconScreenBounds.Left + (_anchorIconScreenBounds.Width / 2);
 			var centerY = _anchorIconScreenBounds.Top + (_anchorIconScreenBounds.Height / 2);
 
@@ -186,30 +229,22 @@ namespace Deskplorer
 			}
 
 			return new Point(
-            Math.Clamp(proposed.X, clampedMinX, clampedMaxX),
+				Math.Clamp(proposed.X, clampedMinX, clampedMaxX),
 				Math.Clamp(proposed.Y, clampedMinY, clampedMaxY));
 		}
 
 		private Size ClampWindowSize(Size proposed, Point currentLocation)
 		{
-         var bounds = Screen.FromPoint(_anchorIconScreenBounds.Location).WorkingArea;
-			var centerX = _anchorIconScreenBounds.Left + (_anchorIconScreenBounds.Width / 2);
-			var centerY = _anchorIconScreenBounds.Top + (_anchorIconScreenBounds.Height / 2);
-
-			var maxWidthByAnchor = Math.Max(MinimumWindowSize.Width, Math.Max(centerX - currentLocation.X, currentLocation.X - centerX) * 2);
-			var maxHeightByAnchor = Math.Max(MinimumWindowSize.Height, Math.Max(centerY - currentLocation.Y, currentLocation.Y - centerY) * 2);
-			var maxWidth = Math.Max(MinimumWindowSize.Width, bounds.Right - currentLocation.X);
-        var maxHeight = Math.Max(MinimumWindowSize.Height, bounds.Bottom - currentLocation.Y);
-
-			maxWidth = Math.Min(maxWidth, maxWidthByAnchor);
-			maxHeight = Math.Min(maxHeight, maxHeightByAnchor);
+			var bounds = Screen.FromPoint(_anchorIconScreenBounds.Location).WorkingArea;
+			var maxWidth = Math.Min(MaximumWindowSize.Width, bounds.Width);
+			var maxHeight = Math.Min(MaximumWindowSize.Height, bounds.Height);
 
 			var minimumContentSize = CalculateMinimumContentWindowSize();
-			var minWidth = Math.Max(MinimumWindowSize.Width, minimumContentSize.Width);
-			var minHeight = Math.Max(MinimumWindowSize.Height, minimumContentSize.Height);
+			var minWidth = Math.Min(Math.Max(DeskFolder.DefaultOpenSize.Width, minimumContentSize.Width), maxWidth);
+			var minHeight = Math.Min(Math.Max(DeskFolder.DefaultOpenSize.Height, minimumContentSize.Height), maxHeight);
 
 			return new Size(
-          Math.Clamp(proposed.Width, minWidth, Math.Max(minWidth, maxWidth)),
+			 Math.Clamp(proposed.Width, minWidth, Math.Max(minWidth, maxWidth)),
 				Math.Clamp(proposed.Height, minHeight, Math.Max(minHeight, maxHeight)));
 		}
 
@@ -217,20 +252,20 @@ namespace Deskplorer
 		{
 			if (_folder.Items.Count == 0)
 			{
-				return MinimumWindowSize;
+				return DeskFolder.DefaultOpenSize;
 			}
+
+			var tileSize = GetItemTileSize();
 
 			if (_folder.AutoArrange)
 			{
-				const int tileWidth = 82;
-				const int tileHeight = 92;
 				const int spacingX = 16;
 				const int spacingY = 12;
 				const int columns = 3;
 
-				var rows = (int)Math.Ceiling(_folder.Items.Count / (double)columns);
-				var contentWidth = (columns * tileWidth) + ((columns - 1) * spacingX) + 20;
-				var contentHeight = (rows * tileHeight) + ((rows - 1) * spacingY) + 20;
+				var rows = (int) Math.Ceiling(_folder.Items.Count / (double) columns);
+				var contentWidth = (columns * tileSize.Width) + ((columns - 1) * spacingX) + 20;
+				var contentHeight = (rows * tileSize.Height) + ((rows - 1) * spacingY) + 20;
 				return new Size(contentWidth, contentHeight + _headerPanel.Height + _statusLabel.Height);
 			}
 
@@ -239,8 +274,8 @@ namespace Deskplorer
 			foreach (var item in _folder.Items)
 			{
 				var pos = item.CustomPosition ?? Point.Empty;
-				furthestX = Math.Max(furthestX, pos.X + 82);
-				furthestY = Math.Max(furthestY, pos.Y + 92);
+				furthestX = Math.Max(furthestX, pos.X + tileSize.Width);
+				furthestY = Math.Max(furthestY, pos.Y + tileSize.Height);
 			}
 
 			return new Size(furthestX + 16, furthestY + _headerPanel.Height + _statusLabel.Height + 16);
@@ -271,35 +306,7 @@ namespace Deskplorer
 				return;
 			}
 
-			var dropPoint = _itemsPanel.PointToClient(new Point(e.X, e.Y));
-			var nextDropPoint = ClampTileLocation(dropPoint, new Size(82, 92));
-			var result = DeskFolderItemService.AddFilesToFolder(
-				_folder,
-				droppedPaths,
-				_folder.AutoArrange ? null : _ =>
-				{
-					var point = nextDropPoint;
-					nextDropPoint = ClampTileLocation(new Point(nextDropPoint.X + 24, nextDropPoint.Y + 24), new Size(82, 92));
-					return point;
-				},
-				_iconCacheService.BuildCacheKey);
-
-			if (result.addedCount == 0)
-			{
-				if (result.duplicateCount > 0)
-				{
-					MessageBox.Show(this, "Dropped items are already in this folder.", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
-				}
-				return;
-			}
-
-			ApplyFolderData();
-			FolderItemsChanged?.Invoke(this, EventArgs.Empty);
-
-			if (result.duplicateCount > 0)
-			{
-				MessageBox.Show(this, $"Added {result.addedCount} item(s). {result.duplicateCount} duplicate item(s) were skipped.", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
-			}
+			HandleImportedFiles(droppedPaths, _itemsPanel.PointToClient(new Point(e.X, e.Y)), "Dropped items are already in this folder.");
 		}
 
 		protected override void OnMouseUp(MouseEventArgs e)
@@ -331,24 +338,24 @@ namespace Deskplorer
 			_toolTip.SetToolTip(addItemAction, "Add item");
 			_quickActionsPanel.Controls.Add(addItemAction);
 
-			_arrangeModeAction = (Label)CreateQuickActionLabel(string.Empty);
+			_arrangeModeAction = (Label) CreateQuickActionLabel(string.Empty);
 			_arrangeModeAction.Cursor = Cursors.Hand;
 			_arrangeModeAction.Click += ArrangeModeAction_Click;
 			_quickActionsPanel.Controls.Add(_arrangeModeAction);
 			UpdateArrangeModeActionText();
 		}
 
-     private void InitializeWindowMenu()
+		private void InitializeWindowMenu()
 		{
-        var refreshIconMenuItem = new ToolStripMenuItem("Refresh Tile Icon") { Name = "_refreshTileIconMenuItem" };
+			var refreshIconMenuItem = new ToolStripMenuItem("Refresh Tile Icon") { Name = "_refreshTileIconMenuItem" };
 			refreshIconMenuItem.Click += RefreshIconMenuItem_Click;
-       var resetIconMenuItem = new ToolStripMenuItem("Reset Tile Icon") { Name = "_resetTileIconMenuItem" };
+			var resetIconMenuItem = new ToolStripMenuItem("Reset Tile Icon") { Name = "_resetTileIconMenuItem" };
 			resetIconMenuItem.Click += ResetIconMenuItem_Click;
-         var resetAllIconsMenuItem = new ToolStripMenuItem("Reset All Folder's Icons") { Name = "_resetAllFolderIconsMenuItem" };
+			var resetAllIconsMenuItem = new ToolStripMenuItem("Reset All Folder's Icons") { Name = "_resetAllFolderIconsMenuItem" };
 			resetAllIconsMenuItem.Click += ResetAllIconsMenuItem_Click;
-        var renameMenuItem = new ToolStripMenuItem("Rename Tile") { Name = "_renameTileMenuItem" };
+			var renameMenuItem = new ToolStripMenuItem("Rename Tile") { Name = "_renameTileMenuItem" };
 			renameMenuItem.Click += RenameMenuItem_Click;
-       var removeMenuItem = new ToolStripMenuItem("Remove from Folder") { Name = "_removeTileMenuItem" };
+			var removeMenuItem = new ToolStripMenuItem("Remove from Folder") { Name = "_removeTileMenuItem" };
 			removeMenuItem.Click += RemoveMenuItem_Click;
 			var importMenuItem = new ToolStripMenuItem("Import desktop shortcut");
 			var importMultipleMenuItem = new ToolStripMenuItem("Import multiple desktop shortcuts...");
@@ -377,7 +384,7 @@ namespace Deskplorer
 			ApplyFolderData();
 		}
 
-     public void SetSharedContextMenu(ContextMenuStrip menu)
+		public void SetSharedContextMenu(ContextMenuStrip menu)
 		{
 			var existingWindowMenuItems = menu.Items.OfType<ToolStripMenuItem>().Where(item => string.Equals(item.Name, WindowMenuItemName, StringComparison.Ordinal)).ToList();
 			foreach (var existing in existingWindowMenuItems)
@@ -412,32 +419,32 @@ namespace Deskplorer
 			_itemsPanel.SuspendLayout();
 			try
 			{
-			_itemsPanel.Controls.Clear();
-			if (_folder.Items.Count == 0)
-			{
-				_itemsPanel.Controls.Add(CreateEmptyStateLabel());
-				_statusLabel.Text = "0 items";
-				return;
-			}
+				_itemsPanel.Controls.Clear();
+				if (_folder.Items.Count == 0)
+				{
+					_itemsPanel.Controls.Add(CreateEmptyStateLabel());
+					_statusLabel.Text = "0 items";
+					return;
+				}
 
-			foreach (var item in _folder.Items)
-			{
-				var tile = CreateItemTile(item);
-				WireItemContextMenu(tile, item);
-				WireItemDrag(tile, item);
-				_itemsPanel.Controls.Add(tile);
-			}
+				foreach (var item in _folder.Items)
+				{
+					var tile = CreateItemTile(item);
+					WireItemContextMenu(tile, item);
+					WireItemDrag(tile, item);
+					_itemsPanel.Controls.Add(tile);
+				}
 
-			if (_folder.AutoArrange)
-			{
-				ArrangeTilesAutomatically();
-			}
-			else
-			{
-				ArrangeTilesManually();
-			}
+				if (_folder.AutoArrange)
+				{
+					ArrangeTilesAutomatically();
+				}
+				else
+				{
+					ArrangeTilesManually();
+				}
 
-			_statusLabel.Text = $"{_folder.Items.Count} items";
+				_statusLabel.Text = $"{_folder.Items.Count} items";
 			}
 			finally
 			{
@@ -629,7 +636,7 @@ namespace Deskplorer
 				if (item.CustomPosition is Point stored)
 				{
 					tile.Location = ClampTileLocation(stored, tile.Size);
-              item.CustomPosition = tile.Location;
+					item.CustomPosition = tile.Location;
 				}
 				else
 				{
@@ -648,7 +655,7 @@ namespace Deskplorer
 		private Point ClampTileLocation(Point proposed, Size tileSize)
 		{
 			const int min = 4;
-         var layoutBounds = _itemsPanel.DisplayRectangle;
+			var layoutBounds = _itemsPanel.DisplayRectangle;
 			var maxX = Math.Max(min, layoutBounds.Width - tileSize.Width - min);
 			var maxY = Math.Max(min, layoutBounds.Height - tileSize.Height - min);
 
@@ -663,7 +670,7 @@ namespace Deskplorer
 
 		private static int SnapCoordinate(int value, int origin, int max)
 		{
-			var snapped = origin + (int)Math.Round((value - origin) / (double)ManualGridSize) * ManualGridSize;
+			var snapped = origin + (int) Math.Round((value - origin) / (double) ManualGridSize) * ManualGridSize;
 			return Math.Clamp(snapped, origin, max);
 		}
 
@@ -683,14 +690,14 @@ namespace Deskplorer
 
 		private void WireItemContextMenu(Control tile, DeskItem item)
 		{
-         if (tile.Controls.Count > 1 && tile.Controls[1] is Label label)
+			if (tile.Controls.Count > 1 && tile.Controls[1] is Label label)
 			{
-				label.Text = FormatLabelText(item.DisplayName, label.Width, label.Font, 2);
+				label.Text = LabelTextFormatter.FormatLabelText(item.DisplayName, label.Width, label.Font, 2);
 				_toolTip.SetToolTip(label, item.DisplayName);
 			}
 
 			tile.MouseUp += ItemControl_MouseUp;
-				tile.ContextMenuStrip = ContextMenuStrip;
+			tile.ContextMenuStrip = ContextMenuStrip;
 			tile.Tag = item;
 
 			foreach (Control child in tile.Controls)
@@ -735,87 +742,6 @@ namespace Deskplorer
 			}
 		}
 
-		private static string FormatLabelText(string text, int maxWidth, Font font, int maxLines)
-		{
-			if (string.IsNullOrWhiteSpace(text))
-			{
-				return string.Empty;
-			}
-
-			if (maxWidth <= 0 || maxLines <= 0)
-			{
-				return string.Empty;
-			}
-
-			var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-			if (words.Length == 0)
-			{
-				return string.Empty;
-			}
-
-			var lines = new List<string>();
-			var currentLine = string.Empty;
-
-         var truncated = false;
-			for (var i = 0; i < words.Length; i++)
-			{
-          var word = words[i];
-				var candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-          if (FitsLine(candidate, maxWidth, font) || string.IsNullOrEmpty(currentLine))
-				{
-					currentLine = candidate;
-					continue;
-				}
-
-				lines.Add(currentLine);
-				currentLine = word;
-
-          if (lines.Count == maxLines - 1)
-				{
-               truncated = i < words.Length - 1;
-					break;
-				}
-			}
-
-         if (lines.Count < maxLines)
-			{
-				lines.Add(currentLine);
-			}
-
-			if (lines.Count > 0)
-			{
-				var lastIndex = Math.Min(lines.Count, maxLines) - 1;
-				var lastLine = lines[lastIndex];
-				if (truncated || !FitsLine(lastLine, maxWidth, font))
-				{
-					lines[lastIndex] = TrimLineToWidth(lastLine, maxWidth, font);
-				}
-			}
-
-			return string.Join("\n", lines.Take(maxLines));
-		}
-
-		private static bool FitsLine(string text, int maxWidth, Font font)
-		{
-			return TextRenderer.MeasureText(text, font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width <= maxWidth;
-		}
-
-		private static string TrimLineToWidth(string text, int maxWidth, Font font)
-		{
-			var trimmed = text.TrimEnd();
-			if (string.IsNullOrEmpty(trimmed))
-			{
-				return string.Empty;
-			}
-
-			while (trimmed.Length > 0 && !FitsLine($"{trimmed}…", maxWidth, font))
-			{
-				trimmed = trimmed[..^1];
-			}
-
-			return trimmed.Length == 0 ? "…" : $"{trimmed}…";
-		}
-
 		private void WireItemDrag(Control tile, DeskItem item)
 		{
 			tile.MouseDown += ItemDrag_MouseDown;
@@ -833,46 +759,64 @@ namespace Deskplorer
 		public bool IsShowingDialog { get; private set; }
 
 		private void AddItemAction_Click(object? sender, EventArgs e)
-{
-    using var dialog = new OpenFileDialog
-    {
-        Title = "Add item to folder",
-        Filter = "All files (*.*)|*.*",
-        CheckFileExists = true,
-           Multiselect = true
-    };
+		{
+			using var dialog = new OpenFileDialog
+			{
+				Title = "Add item to folder",
+				Filter = "All files (*.*)|*.*",
+				CheckFileExists = true,
+				Multiselect = true
+			};
 
-    try
-    {
-        IsShowingDialog = true;
-        if (dialog.ShowDialog(this) != DialogResult.OK)
-        {
-            return;
-        }
-    }
-    finally
-    {
-        IsShowingDialog = false;
-    }
+			try
+			{
+				IsShowingDialog = true;
+				if (dialog.ShowDialog(this) != DialogResult.OK)
+				{
+					return;
+				}
+			}
+			finally
+			{
+				IsShowingDialog = false;
+			}
+			HandleImportedFiles(dialog.FileNames, new Point(10, 10), "Selected items are already in this folder.");
+		}
 
-				var nextDropPoint = ClampTileLocation(new Point(10, 10), new Size(82, 92));
-				var result = DeskFolderItemService.AddFilesToFolder(
-					_folder,
-					dialog.FileNames,
-					_folder.AutoArrange ? null : _ =>
-					{
-						var point = nextDropPoint;
-						nextDropPoint = ClampTileLocation(new Point(nextDropPoint.X + 24, nextDropPoint.Y + 24), new Size(82, 92));
-						return point;
-					},
-					_iconCacheService.BuildCacheKey);
+		private Size GetItemTileSize()
+		{
+			var requestedIconSize = _folder.ItemIconSize <= 0 ? DefaultItemIconSize : _folder.ItemIconSize;
+			var iconSize = Math.Clamp(requestedIconSize, 16, 128);
+			return new Size(iconSize + 34, iconSize + 44);
+		}
+
+		private void HandleImportedFiles(string[] filePaths, Point initialDropPoint, string noAdditionsMessage)
+		{
+			if (filePaths.Length == 0)
+			{
+				return;
+			}
+
+			var tileSize = GetItemTileSize();
+			var nextDropPoint = ClampTileLocation(initialDropPoint, tileSize);
+			var result = DeskFolderItemService.AddFilesToFolder(
+				_folder,
+				filePaths,
+				_folder.AutoArrange ? null : _ =>
+				{
+					var assignedPoint = nextDropPoint;
+					nextDropPoint = ClampTileLocation(new Point(nextDropPoint.X + 24, nextDropPoint.Y + 24), tileSize);
+					return assignedPoint;
+				},
+				_iconCacheService.BuildCacheKey);
 
 			if (result.addedCount == 0)
 			{
 				if (result.duplicateCount > 0)
 				{
-					MessageBox.Show(this, "Dropped items are already in this folder.", "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+					MessageBox.Show(this, noAdditionsMessage, "Deskplorer", MessageBoxButtons.OK, MessageBoxIcon.Information);
 				}
+
 				return;
 			}
 
@@ -895,7 +839,7 @@ namespace Deskplorer
 			var item = control.Tag as DeskItem ?? control.Parent?.Tag as DeskItem;
 			if (item is null)
 			{
-           _contextMenuItem = null;
+				_contextMenuItem = null;
 				return;
 			}
 
@@ -909,8 +853,8 @@ namespace Deskplorer
 
 			if (e.Button == MouseButtons.Left)
 			{
-            _contextMenuItem = item;
-          if (_didDragTile)
+				_contextMenuItem = item;
+				if (_didDragTile)
 				{
 					_didDragTile = false;
 					_suppressLaunchOnMouseUp = false;
@@ -941,7 +885,7 @@ namespace Deskplorer
 			}
 
 			_isDraggingTile = true;
-       _didDragTile = false;
+			_didDragTile = false;
 			_dragTile = tile;
 			_dragItem = item;
 			_dragStartMouse = MousePosition;
@@ -959,9 +903,9 @@ namespace Deskplorer
 			var deltaX = currentMouse.X - _dragStartMouse.X;
 			var deltaY = currentMouse.Y - _dragStartMouse.Y;
 
-        if (Math.Abs(deltaX) > DragActivationThreshold || Math.Abs(deltaY) > DragActivationThreshold)
+			if (Math.Abs(deltaX) > DragActivationThreshold || Math.Abs(deltaY) > DragActivationThreshold)
 			{
-          _didDragTile = true;
+				_didDragTile = true;
 				_suppressLaunchOnMouseUp = true;
 			}
 
@@ -989,9 +933,9 @@ namespace Deskplorer
 
 		private Control? ResolveTileFromSender(object? sender)
 		{
-         if (sender is not Control control)
+			if (sender is not Control control)
 			{
-          return null;
+				return null;
 			}
 
 			var current = control;

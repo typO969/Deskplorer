@@ -1,3 +1,5 @@
+using Deskplorer.Services;
+
 namespace Deskplorer
 {
 	internal static class Program
@@ -11,6 +13,7 @@ namespace Deskplorer
 			// To customize application configuration such as set high DPI settings or default font,
 			// see https://aka.ms/applicationconfiguration.
 			ApplicationConfiguration.Initialize();
+			LoggingService.Initialize(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Deskplorer", "logs"));
         Application.Run(new MainOverlayForm());
 		}
 	}

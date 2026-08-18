@@ -128,13 +128,12 @@ namespace Deskplorer.Services
       }
 
       public string BuildCacheKey(string targetPath)
-      {
-         using var sha = System.Security.Cryptography.SHA256.Create();
-         var bytes = System.Text.Encoding.UTF8.GetBytes(targetPath.Trim().ToLowerInvariant());
-         return Convert.ToHexString(sha.ComputeHash(bytes)).ToLowerInvariant();
-      }
+		{
+			var bytes = System.Text.Encoding.UTF8.GetBytes(targetPath.Trim().ToLowerInvariant());
+			return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+		}
 
-      private static Image ExtractIcon(string targetPath)
+		private static Image ExtractIcon(string targetPath)
       {
          try
          {

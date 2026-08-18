@@ -123,22 +123,26 @@ namespace Deskplorer
 
     private Control CreateItemTile(DeskItem item)
 		{
+			var tileSize = GetItemTileSize();
+			var iconSize = Math.Clamp(_folder.ItemIconSize <= 0 ? 48 : _folder.ItemIconSize, 16, 128);
+			var iconX = Math.Max(0, (tileSize.Width - iconSize) / 2);
         var panel = new Panel
 			{
 				BackColor = Color.FromArgb(24, 24, 24),
             Cursor = Cursors.Hand,
 				Margin = new Padding(8, 6, 8, 6),
-				Size = new Size(82, 92)
+				Size = tileSize
 			};
 
 			var icon = new PictureBox
 			{
            Cursor = Cursors.Hand,
 				Image = SystemIcons.Application.ToBitmap(),
-				Location = new Point(17, 4),
-				Size = new Size(48, 48),
+				Location = new Point(iconX, 4),
+				Size = new Size(iconSize, iconSize),
 				SizeMode = PictureBoxSizeMode.StretchImage
 			};
+			var labelY = icon.Size.Height + 10;
 
 			var label = new Label
 			{
@@ -148,8 +152,8 @@ namespace Deskplorer
             BackColor = Color.Transparent,
             AutoEllipsis = true,
 				TextAlign = ContentAlignment.TopCenter,
-				Location = new Point(0, 58),
-				Size = new Size(82, 32)
+				Location = new Point(0, labelY),
+				Size = new Size(tileSize.Width, Math.Max(0, tileSize.Height - labelY))
 			};
 
          panel.Tag = item;

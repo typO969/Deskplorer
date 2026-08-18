@@ -17,7 +17,7 @@ TECH STACK (STRICT)
 
 CORE BEHAVIOR
 
-1. CLOSED STATE
+1. DESKTOP FOLDER's CLOSED STATE
 
 * Folder appears as a normal desktop icon
 * Has:
@@ -32,7 +32,7 @@ CORE BEHAVIOR
 
   * single click OR hover (hover later) opens it
 
-2. OPEN STATE
+2. DESKTOP FOLDER's OPEN STATE
 
 * Opens a borderless popup window directly ABOVE the icon’s position
 * Window contains:
