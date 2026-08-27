@@ -199,6 +199,25 @@ namespace Deskplorer
 			ContextMenuStrip = _desktopMenu;
 		}
 
+		protected override void OnLoad(EventArgs e)
+		{
+			base.OnLoad(e);
+			RefreshVirtualBounds();
+
+			// Actively adapt to users plugging/unplugging monitors while the app runs
+			Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (s, ev) => RefreshVirtualBounds();
+		}
+
+		private void RefreshVirtualBounds()
+		{
+			// CRITICAL: Overrides the internal OS-level lock on WinForms maximum window sizes
+			this.MaximumSize = new Size(int.MaxValue, int.MaxValue);
+
+			var virtualBounds = SystemInformation.VirtualScreen;
+			this.Location = virtualBounds.Location;
+			this.Size = virtualBounds.Size;
+		}
+
 		private void DesktopMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
 		{
 			_menuFolder = ResolveFolderFromControl(_desktopMenu.SourceControl);

@@ -1,12 +1,12 @@
-DESKPLORER v1 - C#, winforms? // Win10+
+# DESKPLORER v1 - C#, winforms? // Win10+
 
--TRY TO LIMIT AS LITTLE MVVM AS POSSIBLE-
+### -TRY TO LIMIT AS LITTLE MVVM AS POSSIBLE-
 
 PRIMARY FUNCTION - Grouping of desktop icons into customizable "folders".
 	-similar to how windows 3.1's program manager interface was in terms of grouping things, but directly on the desktop
 
 
-WHAT IS SPECIAL ABOUT THESE GROUP ICON FOLDERS - these group icon folders open and close with a hover or a single click very quickly
+## WHAT IS SPECIAL ABOUT THESE GROUP ICON FOLDERS - these group icon folders open and close with a hover or a single click very quickly
 	-the group icons exist in 1 of 2 states:
 		-closed state: indesinguishable from other desktop shortcut icons in terms of interactions, except these can be locked into place if desired 
 		-open state: upon opening, the icon animates to a small box/form exactly where the closed icon was and the box contains all the grouped icons in whatever order they were placed within it. inside these boxes the icons should be the same size as the desktop icon size, and they can be auto-organized like the desktop can do, or they can be manually placed/organized however the user wants them; they should also be scalable in size indepedent of the desktop icon sizes
@@ -26,5 +26,14 @@ WHAT IS SPECIAL ABOUT THESE GROUP ICON FOLDERS - these group icon folders open a
 	-need to consider how and where these desktop icons are located in terms of saved data.
 	-need to also consider how to deal with icon intersections or collisions where a desktop icon is placed underneath deskplorer item on accident or otherwise
 
-SPECIAL/DIFFICULT TO IMPLEMENT FEATURES
-It will need to have access to the desktop insomuchas being able to interact with whatever is currently on the desktop without being volatile or destructive. i doubt it is possible to completly convert a current desktop icon to a deskplorer item. but it should offer the ability to select any number of desktop icons and convert or copy and paste into the open folders.
+## SPECIAL/DIFFICULT TO IMPLEMENT FEATURES
+	-It will need to have access to the desktop insomuchas being able to interact with whatever is currently on the desktop without being volatile or destructive. i doubt it is possible to completly convert a current desktop icon to a deskplorer item. but it should offer the ability to select any number of desktop icons and convert or copy and paste into the open folders.
+
+
+## Project Guidelines
+	- Deskplorer default folder item layout/sorting/arranging should be custom/manual; auto-arrange should only apply when explicitly enabled.
+	- Deskplorer folder window movement should be constrained around its icon so window edges cannot cross over the icon; movement is monitor-contained and the icon stays stationary while open.
+	- Deskplorer should support multi-line icon labels, truncating long names using standard ellipsis behavior similar to Windows.
+	- Deskplorer should use the same full context menu from both folder icons and FolderWindowForm; menu items should not be removed based on hover mode.
+	- Prefer naming the two interaction areas as "Desktop/DesktopOverlay" and "Window/WindowForm" for menu clarity, and use two menus (DESKTOPMNU and WINDOWMNU) with separators represented as ---- and submenus indented.
+	

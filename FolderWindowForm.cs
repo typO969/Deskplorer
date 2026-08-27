@@ -473,38 +473,29 @@ namespace Deskplorer
 
 				var filePath = item.FilePath;
 				var cacheKey = item.IconCacheKey;
-				_ = System.Threading.Tasks.Task.Run(() => _iconCacheService.GetIconImage(filePath, cacheKey))
-					.ContinueWith(task =>
-					{
-						if (!task.IsCompletedSuccessfully || IsDisposed || icon.IsDisposed)
-						{
-							return;
-						}
+				LoadIconAsync(icon, filePath, item.IconCacheKey, item);
+			}
+		}
 
-						try
-						{
-							if (!icon.IsDisposed && ReferenceEquals(icon.Tag, item))
-							{
-								if (icon.InvokeRequired)
-								{
-									icon.BeginInvoke(new Action(() =>
-									{
-										if (!icon.IsDisposed && ReferenceEquals(icon.Tag, item))
-										{
-											icon.Image = task.Result;
-										}
-									}));
-								}
-								else
-								{
-									icon.Image = task.Result;
-								}
-							}
-						}
-						catch
-						{
-						}
-					}, System.Threading.Tasks.TaskScheduler.Default);
+		private async void LoadIconAsync(PictureBox icon, string filePath, string cacheKey, DeskItem item)
+		{
+			try
+			{
+				// 1. Offload heavy GDI extraction and Disk I/O to a background thread
+				var image = await Task.Run(() => _iconCacheService.GetIconImage(filePath, cacheKey));
+
+				// 2. Await natively returns execution to the UI thread here.
+				// No BeginInvoke required! We are safely on the UI thread.
+
+				// 3. Synchronous, thread-safe check to prevent ObjectDisposedException
+				if (!this.IsDisposed && !icon.IsDisposed && ReferenceEquals(icon.Tag, item))
+				{
+					icon.Image = image;
+				}
+			}
+			catch (Exception ex)
+			{
+				LoggingService.LogException(ex, $"Async icon load failed for {filePath}");
 			}
 		}
 

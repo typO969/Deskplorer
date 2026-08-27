@@ -12,9 +12,13 @@ namespace Deskplorer
 		{
 			// To customize application configuration such as set high DPI settings or default font,
 			// see https://aka.ms/applicationconfiguration.
+
+			Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+
 			ApplicationConfiguration.Initialize();
 			LoggingService.Initialize(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Deskplorer", "logs"));
-        Application.Run(new MainOverlayForm());
+			Application.Run(new MainOverlayForm());
+
 		}
 	}
-}
+}	
